@@ -13,21 +13,35 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # Detecta automaticamente onde está o package.json
+      - name: Detect project directory
+        id: detect
+        run: |
+          if [ -f "./package.json" ]; then
+            echo "PROJECT_DIR=." >> $GITHUB_ENV
+          elif [ -f "./gerador-copy-main/package.json" ]; then
+            echo "PROJECT_DIR=gerador-copy-main" >> $GITHUB_ENV
+          else
+            echo "❌ package.json não encontrado"; exit 1
+          fi
+          echo "Projeto em: ${{ env.PROJECT_DIR }}"
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
+      # Use npm install (mais tolerante que npm ci)
       - name: Install dependencies
-        working-directory: ./gerador-copy-main
-        run: npm install
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: npm install --no-audit --no-fund
 
       - name: Build project
-        working-directory: ./gerador-copy-main
+        working-directory: ${{ env.PROJECT_DIR }}
         run: npm run build
 
       - name: Upload dist artifact
         uses: actions/upload-artifact@v4
         with:
           name: dist
-          path: gerador-copy-main/dist
+          path: ${{ env.PROJECT_DIR }}/dist
