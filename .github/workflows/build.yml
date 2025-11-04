@@ -8,8 +8,9 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout repo
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Setup Node
@@ -17,11 +18,11 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install deps
+      - name: Install dependencies
         working-directory: ./gerador-copy-main
-        run: npm ci
+        run: npm install
 
-      - name: Build
+      - name: Build project
         working-directory: ./gerador-copy-main
         run: npm run build
 
