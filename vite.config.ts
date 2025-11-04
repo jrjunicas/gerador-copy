@@ -2,7 +2,7 @@ import path from 'path'
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// Configuração principal do Vite
+// Vite para rodar em subpasta /gerador-copy/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', '')
   return {
@@ -11,16 +11,18 @@ export default defineConfig(({ mode }) => {
       host: '0.0.0.0',
     },
     plugins: [react()],
+    // ⚠️ Não injete a chave no front. O backend já cuida disso.
     define: {
-      'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
-      'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
+      // Se algum código ainda usa process.env.API_KEY no front, remova esses usos.
+      // Mantemos vazio para não vazar chave.
+      'process.env.API_KEY': JSON.stringify(''),
+      'process.env.GEMINI_API_KEY': JSON.stringify(''),
     },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
       },
     },
-    // 👇 Caminho base para funcionar em uma subpasta da Hostinger
-    base: '/gerador-copy/',
+    base: '/gerador-copy/', // 👈 importante p/ hospedar em subpasta
   }
 })
