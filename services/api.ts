@@ -2,7 +2,7 @@
 const API_BASE = "https://gerador-copy.onrender.com"; // sua API no Render
 
 export async function generateViaApi(prompt: string) {
-  const resp = await fetch(`${API_BASE}/api/generate`, {
+const resp = await fetch('https://gerador-copy.onrender.com/api/generate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ prompt })
