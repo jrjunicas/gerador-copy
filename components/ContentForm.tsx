@@ -3,6 +3,8 @@ import { Client, ContentRequest, ContentFormatDefinition, SOCIAL_NETWORKS, Promp
 import { UserPlusIcon, EditIcon, TrashIcon, PlusCircleIcon, Cog6ToothIcon, PaperClipIcon } from './Icons';
 import { extractThemeFromFile } from '../services/geminiService';
 
+
+import { saveCurrentPreset, listPresets } from '../services/db';
 interface ContentFormProps {
   clients: Client[];
   formats: ContentFormatDefinition[];
@@ -60,12 +62,25 @@ const ContentForm: React.FC<ContentFormProps> = ({
     }
   }, [prompts]);
   
-  const handleClientChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+  const handleClientChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
     if (queue.length > 0 && !window.confirm("Alterar o cliente irá limpar a fila de conteúdos. Deseja continuar?")) {
         return;
     }
     setClientId(e.target.value);
     setQueue([]);
+    // Autopreenche estilo/prompt a partir do último preset salvo
+    try {
+      const selected = clients.find(c => c.id === e.target.value)?.name || '';
+      const res = await listPresets({ client_name: selected });
+      if (res?.presets?.length) {
+        const p = res.presets[0];
+        setCurrentRequest(prev => ({ ...prev,
+          format: p.content_style || prev.format,
+          specificDirections: typeof p.prompt === 'string' ? p.prompt : prev.specificDirections
+        }));
+      }
+    } catch (err) { console.warn('listPresets falhou:', err); }
+
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -82,8 +97,17 @@ const ContentForm: React.FC<ContentFormProps> = ({
     });
   };
   
-  const handleAddOrUpdateQueue = (e: React.FormEvent) => {
+  const handleAddOrUpdateQueue = async (e: React.FormEvent) => {
     e.preventDefault();
+    // salva Cliente + Estilo + Prompt no MySQL
+    try {
+      const clientName = (clients.find(c => c.id === clientId)?.name) || '';
+      await saveCurrentPreset(clientName, currentRequest.format, currentRequest.specificDirections || '');
+    } catch (err) {
+      // não bloqueia fluxo em caso de falha de rede
+      console.warn('saveCurrentPreset falhou:', err);
+    }
+
     if (editingId) {
       setQueue(q => q.map(req => req.id === editingId ? { ...currentRequest, id: editingId } : req));
       setEditingId(null);
