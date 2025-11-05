@@ -6,15 +6,12 @@ const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 const app = express();
 
-// ===== CONFIG =====
 const PORT = process.env.PORT || 10000;
 const GEMINI_KEY = process.env.GEMINI_API_KEY;
-
 if (!GEMINI_KEY) {
-  console.warn("⚠️ Aviso: GEMINI_API_KEY não encontrada no ambiente do servidor Render!");
+  console.warn("⚠️ GEMINI_API_KEY não encontrada no ambiente do servidor Render!");
 }
 
-// ===== MIDDLEWARE =====
 app.use(cors({
   origin: [
     "https://www.agenciamuum.com.br",
@@ -22,23 +19,19 @@ app.use(cors({
     "http://localhost:5173"
   ],
   methods: ["GET", "POST", "OPTIONS"],
-  allowedHeaders: ["Content-Type"],
+  allowedHeaders: ["Content-Type"]
 }));
-
 app.use(bodyParser.json({ limit: "2mb" }));
 
-// ===== HEALTH CHECK =====
 app.get("/", (_req, res) => {
   res.json({ status: "ok", message: "Servidor ativo e funcionando 🚀" });
 });
 
-// ===== ROTA PRINCIPAL =====
 app.post("/api/generate", async (req, res) => {
   try {
     if (!GEMINI_KEY) {
       return res.status(500).json({ error: "GEMINI_API_KEY ausente no servidor" });
     }
-
     const { prompt } = req.body || {};
     if (!prompt || typeof prompt !== "string" || !prompt.trim()) {
       return res.status(400).json({ error: "prompt inválido ou vazio" });
@@ -55,12 +48,11 @@ app.post("/api/generate", async (req, res) => {
     console.error("❌ Erro ao gerar conteúdo:", err);
     res.status(500).json({
       error: "falha_gemini",
-      detail: err?.message || "Erro desconhecido",
+      detail: err?.message || "Erro desconhecido"
     });
   }
 });
 
-// ===== INICIALIZA SERVIDOR =====
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`✅ Servidor rodando em http://0.0.0.0:${PORT}`);
+app.listen(process.env.PORT || 10000, "0.0.0.0", () => {
+  console.log(`✅ API listening on :${process.env.PORT || 10000}`);
 });
