@@ -1,6 +1,6 @@
 // src/services/db.ts
 const DB_API = "https://www.agenciamuum.com.br/gerador-copy/api";
-const API_KEY = "troque-por-uma-chave-bem-forte"; // a MESMA do config.php
+const API_KEY = "jK-2K4mP9-new123"; // a MESMA do config.php
 
 async function jfetch(url: string, init: RequestInit = {}) {
   const resp = await fetch(url, {
@@ -18,6 +18,7 @@ async function jfetch(url: string, init: RequestInit = {}) {
   return resp.json();
 }
 
+// ---- PRESETS (Cliente + Estilo + Prompt) ----
 export async function savePreset(data: {
   client_name: string;
   content_style: string;
@@ -37,6 +38,7 @@ export async function listPresets(filters?: { client_name?: string; content_styl
   return jfetch(`${DB_API}/list_presets.php${q}`);
 }
 
+// ---- CLIENTES (modal antigo; se usar) ----
 export async function createClient(data: {
   name: string;
   tone_of_voice?: string;
@@ -65,4 +67,14 @@ export async function getClient(id: number) {
 
 export async function deleteClient(id: number) {
   return jfetch(`${DB_API}/delete_client.php?id=${id}`, { method: 'POST' });
+}
+
+// ---- Helper: chamada única para salvar preset a partir de estados da página ----
+export async function saveCurrentPreset(clientName: string, contentStyle: string, promptText: string) {
+  if (!clientName || !contentStyle) return;
+  await savePreset({
+    client_name: clientName,
+    content_style: contentStyle,
+    prompt: promptText || ""
+  });
 }
