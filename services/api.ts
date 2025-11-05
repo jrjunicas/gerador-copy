@@ -1,5 +1,4 @@
 // src/services/api.ts
-// Usa variável de ambiente quando existir, senão cai no Render por padrão.
 const API_BASE =
   (import.meta as any).env?.VITE_API_BASE_URL || "https://gerador-copy.onrender.com";
 
@@ -16,5 +15,6 @@ export async function generateViaApi(prompt: string) {
     console.error("Erro da API:", resp.status, text);
     throw new Error("Falha na geração");
   }
+
   return resp.json();
 }
