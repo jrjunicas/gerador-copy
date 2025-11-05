@@ -1,231 +1,195 @@
-import { GoogleGenAI } from "@google/genai";
+// services/geminiService.ts
+// Frontend SEM dependência do @google/genai: todas as chamadas vão para o backend no Render.
+
 import { Client, ContentRequest, GeneratedContent, NetworkContent, ContentFormatDefinition } from '../types';
 
-if (!process.env.API_KEY) {
-  // In a real app, this might be handled differently,
-  // but for this context, we assume it's set.
-  console.warn("API_KEY environment variable not set. API calls will fail.");
+// URL do backend (Render)
+const API_BASE = "https://gerador-copy.onrender.com";
+
+// ---- Utilitário seguro para chamar a API própria ----
+export async function generateViaApi(prompt: string): Promise<string> {
+  const resp = await fetch(`${API_BASE}/api/generate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt })
+  });
+
+  if (!resp.ok) {
+    const txt = await resp.text().catch(() => "");
+    throw new Error(`Falha na geração: ${resp.status} ${txt}`);
+  }
+
+  const data = await resp.json();
+  // Backend responde { ok: true, text: "..." }
+  const text = data?.text ?? data?.result ?? "";
+  if (!text) throw new Error("Resposta vazia da IA");
+  return text;
 }
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
-
-function fileToGenerativePart(file: File): Promise<{ inlineData: { data: string; mimeType: string; } }> {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = (event) => {
-            if (event.target && typeof event.target.result === 'string') {
-                const base64Data = event.target.result.split(',')[1];
-                resolve({
-                    inlineData: {
-                        data: base64Data,
-                        mimeType: file.type,
-                    },
-                });
-            } else {
-                reject(new Error("Falha ao ler o arquivo."));
-            }
-        };
-        reader.onerror = (error) => reject(error);
-        reader.readAsDataURL(file);
-    });
+// ---- Suporte limitado a anexos no front (sem expor chave)
+// Para .txt funciona (vira um prompt). Para imagem, exibimos orientação até ativarmos no backend.
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      if (event.target && typeof event.target.result === 'string') {
+        resolve(event.target.result);
+      } else {
+        reject(new Error("Falha ao ler o arquivo."));
+      }
+    };
+    reader.onerror = (error) => reject(error);
+    reader.readAsDataURL(file);
+  });
 }
 
 export const extractThemeFromFile = async (file: File): Promise<string> => {
-  try {
-    let contents;
-    
-    if (file.type.startsWith('image/')) {
-        const imagePart = await fileToGenerativePart(file);
-        contents = {
-            parts: [
-                imagePart, 
-                { text: 'Analise esta imagem e descreva o tema principal em uma frase curta e impactante, ideal para um post de rede social.' }
-            ],
-        };
-    } else if (file.type === 'text/plain') {
-        const text = await file.text();
-        contents = `Resuma a seguinte transcrição/texto em um tema central para um post de rede social. O resultado deve ser uma frase curta e cativante:\n\n---INÍCIO DO TEXTO---\n${text}\n---FIM DO TEXTO---`;
-    } else {
-        throw new Error('Tipo de arquivo não suportado. Use imagens (JPEG, PNG) ou texto (.txt).');
-    }
-
-    const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: contents,
-        config: {
-            temperature: 0.5,
-        }
-    });
-
-    const responseText = response.text;
-    if (!responseText) {
-        throw new Error('A IA não conseguiu extrair um tema do arquivo.');
-    }
-
-    return responseText.trim();
-
-  } catch (error) {
-    console.error("Erro ao extrair tema do arquivo:", error);
-    throw new Error(error instanceof Error ? error.message : "Falha ao analisar o arquivo. Verifique o console para mais detalhes.");
+  if (file.type === 'text/plain') {
+    // Lemos o .txt e pedimos ao backend para resumir em um tema curto
+    const text = await file.text();
+    const prompt = `Resuma o seguinte texto em UMA frase curta e cativante, ideal como tema central para um post de rede social:\n\n${text}`;
+    const summary = await generateViaApi(prompt);
+    return summary.trim();
   }
+
+  if (file.type.startsWith('image/')) {
+    // Para imagem, precisamos habilitar no backend (rota que aceite imagem).
+    // Mantemos o front seguro e avisamos o usuário por enquanto.
+    throw new Error("Extração de tema a partir de imagem requer ajuste no backend. Envie um .txt por enquanto.");
+  }
+
+  throw new Error('Tipo de arquivo não suportado. Use imagens (.png/.jpg) após habilitarmos no backend, ou texto (.txt).');
 };
 
-function buildPrompt(request: Omit<ContentRequest, 'id'>, client: Client, formats: ContentFormatDefinition[]): string {
-  const allNetworks = request.networks.includes('Outro') 
-    ? [...request.networks.filter(n => n !== 'Outro'), request.customNetwork].filter(Boolean) 
+// ---- Prompt builder (mantido) ----
+function buildPrompt(
+  request: Omit<ContentRequest, 'id'>,
+  client: Client,
+  formats: ContentFormatDefinition[]
+): string {
+  const allNetworks = request.networks.includes('Outro')
+    ? [...request.networks.filter(n => n !== 'Outro'), request.customNetwork].filter(Boolean)
     : request.networks;
 
   const selectedFormat = formats.find(f => f.name === request.format);
   const formatInstructions = selectedFormat?.description || 'Gere um conteúdo criativo e de alta qualidade para o formato especificado.';
 
   return `
-    ASSUMA O PAPEL de um consultor criativo de conteúdo, especialista em crescimento orgânico e viralização com mais de 10 anos de experiência. Você é mestre em comportamento humano, gatilhos mentais e neurociência para criar comunidades engajadas.
+ASSUMA O PAPEL de um consultor criativo de conteúdo, especialista em crescimento orgânico e viralização com mais de 10 anos de experiência. Você é mestre em comportamento humano, gatilhos mentais e neurociência para criar comunidades engajadas.
 
-    **PERSONA DO CLIENTE (MUITO IMPORTANTE):**
-    Sua tarefa principal é gerar todo o conteúdo estritamente de acordo com a persona do cliente a seguir. A voz, o estilo e o vocabulário devem ser uma personificação direta deste perfil.
-    - **Nome do Cliente:** ${client.name}
-    - **Tom de Voz:** ${client.toneOfVoice}
-    - **Público-Alvo:** ${client.targetAudience}
-    - **Mercado:** ${client.market}
+**PERSONA DO CLIENTE (MUITO IMPORTANTE):**
+Sua tarefa principal é gerar todo o conteúdo estritamente de acordo com a persona do cliente a seguir. A voz, o estilo e o vocabulário devem ser uma personificação direta deste perfil.
+- **Nome do Cliente:** ${client.name}
+- **Tom de Voz:** ${client.toneOfVoice}
+- **Público-Alvo:** ${client.targetAudience}
+- **Mercado:** ${client.market}
 
-    **REGRAS DE CONTEÚDO (OBRIGATÓRIO):**
-    1.  **CONCISÃO E IMPACTO:** Todos os textos, tanto para os criativos (carrossel, imagem) quanto para as legendas, DEVEM ser curtos, claros e diretos. Otimize para leitura rápida, retenção e engajamento. Evite parágrafos longos.
-    2.  **CTA OBRIGATÓRIO:** TODA legenda e o final de todo carrossel DEVEM terminar com um Call-to-Action (CTA) claro e convidativo, alinhado ao objetivo definido.
-    3.  **BOAS PRÁTICAS:** Aplique as melhores e mais atuais práticas de copywriting para redes sociais para maximizar o alcance e a interação.
-    4.  **eCommerce:** Sempre que se referir a comércio eletrônico, use o termo 'eCommerce'.
+**REGRAS DE CONTEÚDO (OBRIGATÓRIO):**
+1. **CONCISÃO E IMPACTO:** Textos curtos, claros e diretos. Evite parágrafos longos.
+2. **CTA OBRIGATÓRIO:** Toda legenda e o final do carrossel DEVEM terminar com um CTA claro.
+3. **BOAS PRÁTICAS:** Aplique as melhores práticas de copywriting para maximizar alcance e interação.
+4. **eCommerce:** Sempre use o termo 'eCommerce'.
 
-    **TAREFA:**
-    Faça uma pesquisa aprofundada na internet sobre o tema fornecido. Crie conteúdo para redes sociais que se alinhe perfeitamente com a **PERSONA DO CLIENTE** e siga todas as **REGRAS DE CONTEÚDO** acima.
+**TAREFA:**
+Crie conteúdo para redes sociais que se alinhe perfeitamente à **PERSONA** e siga as **REGRAS**.
 
-    **DETALHES DO CONTEÚDO:**
-    - **Tema Central:** ${request.theme}
-    - **Formato do Conteúdo:** ${request.format}
-      - Instruções Específicas do Formato: ${formatInstructions}
-    - **Redes Sociais:** ${allNetworks.join(', ')}
-    - **Objetivo do CTA:** ${request.ctaObjective}
-    - **Direcionamento Específico Adicional:** ${request.specificDirections || 'Nenhum.'}
+**DETALHES DO CONTEÚDO:**
+- **Tema Central:** ${request.theme}
+- **Formato do Conteúdo:** ${request.format}
+  - Instruções Específicas do Formato: ${formatInstructions}
+- **Redes Sociais:** ${allNetworks.join(', ')}
+- **Objetivo do CTA:** ${request.ctaObjective}
+- **Direcionamento Específico Adicional:** ${request.specificDirections || 'Nenhum.'}
 
-    **REQUISITOS DE SAÍDA:**
-    1.  **Sugestão Criativa:** Forneça uma sugestão criativa detalhada e bem estruturada. Use markdown para formatação, especificamente negrito (usando **texto**) para títulos e rótulos para melhorar a legibilidade. Para o formato 'Carrossel', ESTRUTURE A RESPOSTA PARA CADA TELA DA SEGUINTE FORMA, com os rótulos em negrito e com quebras de linha:
-        **Tela 1**
-        **Texto:** [Seu texto para a tela 1 aqui]
-        **Ideia de Imagem:** [Sua ideia de imagem para a tela 1 aqui]
+**REQUISITOS DE SAÍDA:**
+1. **Sugestão Criativa:** (markdown, com **negrito** em rótulos). Para 'Carrossel', liste “Tela X / Texto / Ideia de Imagem”.
+2. **Frases de Capa:** 10 opções (máx. 60 caracteres), focadas em curiosidade e engajamento.
+3. **Conteúdo por Rede Social** (para cada rede em ${allNetworks.join(', ')}):
+   - Uma legenda concisa e impactante (usando o Tom de Voz do cliente).
+   - 6 hashtags relevantes (ordem diferente por rede).
+   - Lembre-se do CTA no final.
 
-        **Tela 2**
-        **Texto:** [Seu texto para a tela 2 aqui]
-        **Ideia de Imagem:** [Sua ideia de imagem para a tela 2 aqui]
-        (e assim por diante para as demais telas)
-    2.  **Frases de Capa:** Gere 10 opções de frases curtas (máximo de 60 caracteres) para a capa do conteúdo, focadas em gerar curiosidade e engajamento.
-    3.  **Conteúdo por Rede Social:** Para CADA rede social, produza o seguinte, sempre incorporando o **Tom de Voz** do cliente e seguindo as **REGRAS DE CONTEÚDO**:
-        - Uma legenda CONCISA e impactante que fale diretamente com o **Público-Alvo**.
-        - 6 hashtags relevantes e populares, em uma ordem diferente para cada rede.
-        - Lembre-se, o CTA no final da legenda é obrigatório.
+**FORMATO DE SAÍDA ESTRITO:**
+[START_CREATIVE_SUGGESTION]
+(Aqui vai a sugestão criativa formatada com markdown)
+[END_CREATIVE_SUGGESTION]
 
-    **FORMATO DE SAÍDA ESTRITO (MUITO IMPORTANTE):**
-    Use os delimitadores exatos abaixo para estruturar sua resposta. Não adicione nenhum texto, explicação ou formatação fora destes blocos.
+[START_COVER_PHRASES]
+1. Primeira frase de capa.
+2. Segunda frase de capa.
+...
+10. Décima frase de capa.
+[END_COVER_PHRASES]
 
-    [START_CREATIVE_SUGGESTION]
-    (Aqui vai a sugestão criativa formatada com markdown)
-    [END_CREATIVE_SUGGESTION]
+${allNetworks.map(network => `
+[START_${network.toUpperCase().replace(/\s+/g, '_')}]
+**Legenda:**
+[Legenda para ${network}]
 
-    [START_COVER_PHRASES]
-    1. Primeira frase de capa.
-    2. Segunda frase de capa.
-    ...
-    10. Décima frase de capa.
-    [END_COVER_PHRASES]
-
-    ${allNetworks.map(network => `
-    [START_${network.toUpperCase().replace(/\s+/g, '_')}]
-    **Legenda:**
-    [Legenda para ${network}]
-
-    **Hashtags:**
-    #hashtag1 #hashtag2 #hashtag3 #hashtag4 #hashtag5 #hashtag6
-    [END_${network.toUpperCase().replace(/\s+/g, '_')}]
-    `).join('\n')}
+**Hashtags:**
+#hashtag1 #hashtag2 #hashtag3 #hashtag4 #hashtag5 #hashtag6
+[END_${network.toUpperCase().replace(/\s+/g, '_')}]
+`).join('\n')}
   `;
 }
 
+// ---- Parse do retorno (mantido) ----
 function parseResponse(responseText: string, request: Omit<ContentRequest, 'id'>): GeneratedContent {
-    const allNetworks = request.networks.includes('Outro') 
-        ? [...request.networks.filter(n => n !== 'Outro'), request.customNetwork].filter(Boolean) 
-        : request.networks;
+  const allNetworks = request.networks.includes('Outro')
+    ? [...request.networks.filter(n => n !== 'Outro'), request.customNetwork].filter(Boolean)
+    : request.networks;
 
-    const creativeSuggestion = responseText.split('[START_CREATIVE_SUGGESTION]')[1]?.split('[END_CREATIVE_SUGGESTION]')[0]?.trim() || 'Nenhuma sugestão criativa gerada.';
+  const creativeSuggestion =
+    responseText.split('[START_CREATIVE_SUGGESTION]')[1]?.split('[END_CREATIVE_SUGGESTION]')[0]?.trim()
+    || 'Nenhuma sugestão criativa gerada.';
 
-    const coverPhrasesText = responseText.split('[START_COVER_PHRASES]')[1]?.split('[END_COVER_PHRASES]')[0]?.trim();
-    const coverPhrases = coverPhrasesText ? coverPhrasesText.split('\n').map(p => p.replace(/^\d+\.\s*/, '').trim()).filter(p => p) : [];
+  const coverPhrasesText =
+    responseText.split('[START_COVER_PHRASES]')[1]?.split('[END_COVER_PHRASES]')[0]?.trim();
 
-    const networkContent: Record<string, NetworkContent> = {};
-    allNetworks.forEach(network => {
-        const networkKey = network.toUpperCase().replace(/\s+/g, '_');
-        const networkBlock = responseText.split(`[START_${networkKey}]`)[1]?.split(`[END_${networkKey}]`)[0]?.trim();
-        
-        if (networkBlock) {
-            const caption = networkBlock.split('**Legenda:**')[1]?.split('**Hashtags:**')[0]?.trim() || '';
-            const hashtags = networkBlock.split('**Hashtags:**')[1]?.trim() || '';
-            networkContent[network] = { caption, hashtags };
-        } else {
-             networkContent[network] = { caption: `Conteúdo para ${network} não foi gerado.`, hashtags: '' };
-        }
-    });
+  const coverPhrases = coverPhrasesText
+    ? coverPhrasesText
+        .split('\n')
+        .map(p => p.replace(/^\d+\.\s*/, '').trim())
+        .filter(Boolean)
+    : [];
 
-    return { creativeSuggestion, coverPhrases, networkContent };
+  const networkContent: Record<string, NetworkContent> = {};
+  allNetworks.forEach(network => {
+    const key = network.toUpperCase().replace(/\s+/g, '_');
+    const block = responseText.split(`[START_${key}]`)[1]?.split(`[END_${key}]`)[0]?.trim();
+    if (block) {
+      const caption = block.split('**Legenda:**')[1]?.split('**Hashtags:**')[0]?.trim() || '';
+      const hashtags = block.split('**Hashtags:**')[1]?.trim() || '';
+      networkContent[network] = { caption, hashtags };
+    } else {
+      networkContent[network] = { caption: `Conteúdo para ${network} não foi gerado.`, hashtags: '' };
+    }
+  });
+
+  return { creativeSuggestion, coverPhrases, networkContent };
 }
 
-
-export const generateSocialMediaContent = async (request: Omit<ContentRequest, 'id'>, client: Client, formats: ContentFormatDefinition[]): Promise<GeneratedContent> => {
-  try {
-    const prompt = buildPrompt(request, client, formats);
-    
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: prompt,
-      config: {
-        tools: [{googleSearch: {}}],
-        temperature: 0.7,
-      },
-    });
-
-    const responseText = response.text;
-    if (!responseText) {
-      throw new Error("A API não retornou conteúdo. Tente refinar sua solicitação.");
-    }
-    
-    return parseResponse(responseText, request);
-
-  } catch (error) {
-    console.error("Erro ao chamar a API Gemini:", error);
-    throw new Error("Falha na comunicação com a IA. Verifique sua conexão e a chave de API.");
-  }
+// ---- Geração principal usando o backend ----
+export const generateSocialMediaContent = async (
+  request: Omit<ContentRequest, 'id'>,
+  client: Client,
+  formats: ContentFormatDefinition[]
+): Promise<GeneratedContent> => {
+  const prompt = buildPrompt(request, client, formats);
+  const responseText = await generateViaApi(prompt);
+  return parseResponse(responseText, request);
 };
 
 export const generateBatchSocialMediaContent = async (
-  requests: ContentRequest[], 
+  requests: ContentRequest[],
   client: Client,
   formats: ContentFormatDefinition[]
 ): Promise<(GeneratedContent | { error: string })[]> => {
-  const promises = requests.map(request => {
-      const { id, ...requestData } = request;
-      return generateSocialMediaContent(requestData, client, formats)
-        .catch(err => ({ 
-          error: err instanceof Error ? err.message : `Falha ao gerar conteúdo para o tema "${request.theme}".`
-        }));
-    }
-  );
-  
+  const promises = requests.map(r => {
+    const { id, ...req } = r;
+    return generateSocialMediaContent(req, client, formats).catch(err => ({
+      error: err instanceof Error ? err.message : `Falha ao gerar conteúdo para o tema "${r.theme}".`
+    }));
+  });
   return Promise.all(promises);
 };
-
-// ---- Production-safe Gemini proxy call ----
-export async function generateViaApi(prompt) {
-  const resp = await fetch('/api/generate', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ prompt })
-  });
-  if (!resp.ok) throw new Error('Falha na geração');
-  return await resp.json();
-}
-
