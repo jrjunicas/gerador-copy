@@ -1,6 +1,6 @@
 // src/services/db.ts
 const DB_API = "https://www.agenciamuum.com.br/gerador-copy/api";
-const API_KEY = "jK-2K4mP9-new123"; // o MESMO de config.php
+const API_KEY = "jK-2K4mP9-new123"; //  MESMO de config.php
 
 async function jfetch(url: string, init: RequestInit = {}) {
   const resp = await fetch(url, {
