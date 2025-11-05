@@ -1,27 +1,24 @@
 {
-  "name": "gerador-de-conteúdo-para-redes-sociais",
+  "name": "gerador-copy",
+  "version": "1.0.0",
   "private": true,
-  "version": "0.0.0",
-  "type": "module",
+  "description": "Gerador de conteúdo com backend Express + Gemini",
+  "license": "MIT",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "dev:server": "node server/index.js",
-    "start:server": "node server/index.js"
+    "start": "node server/index.cjs"
   },
   "dependencies": {
-    "react": "^19.2.0",
-    "react-dom": "^19.2.0",
-    "@google/genai": "^1.27.0",
-    "express": "^4.19.2",
+    "@google/generative-ai": "^0.11.3",
+    "body-parser": "^1.20.2",
     "cors": "^2.8.5",
-    "node-fetch": "^2.7.0"
+    "express": "^4.19.2"
   },
   "devDependencies": {
-    "@types/node": "^22.14.0",
-    "@vitejs/plugin-react": "^5.0.0",
-    "typescript": "~5.8.2",
-    "vite": "^6.2.0"
+    "@vitejs/plugin-react": "^4.3.2",
+    "typescript": "^5.5.4",
+    "vite": "^5.4.10"
   }
 }
