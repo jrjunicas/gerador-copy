@@ -1,12 +1,20 @@
 // src/services/api.ts
-const API_BASE = "https://gerador-copy.onrender.com"; // sua API no Render
+// Usa variável de ambiente quando existir, senão cai no Render por padrão.
+const API_BASE =
+  (import.meta as any).env?.VITE_API_BASE_URL || "https://gerador-copy.onrender.com";
 
 export async function generateViaApi(prompt: string) {
-const resp = await fetch('https://gerador-copy.onrender.com/api/generate', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ prompt })
+  const url = `${API_BASE}/api/generate`;
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt }),
   });
-  if (!resp.ok) throw new Error('Falha na geração');
-  return await resp.json();
+
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => "");
+    console.error("Erro da API:", resp.status, text);
+    throw new Error("Falha na geração");
+  }
+  return resp.json();
 }
