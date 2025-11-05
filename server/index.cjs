@@ -1,46 +1,66 @@
-// server/index.cjs  (CommonJS)
-const express = require('express');
-const cors = require('cors');
-const fetch = require('node-fetch'); // v2 (CommonJS)
+// server/index.cjs
+const express = require("express");
+const cors = require("cors");
+const bodyParser = require("body-parser");
+const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 const app = express();
-app.use(cors());
-app.use(express.json());
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
-const GEMINI_ENDPOINT =
-  process.env.GEMINI_ENDPOINT ||
-  'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent';
+// ===== CONFIG =====
+const PORT = process.env.PORT || 10000;
+const GEMINI_KEY = process.env.GEMINI_API_KEY;
 
-app.post('/api/generate', async (req, res) => {
+if (!GEMINI_KEY) {
+  console.warn("⚠️ Aviso: GEMINI_API_KEY não encontrada no ambiente do servidor Render!");
+}
+
+// ===== MIDDLEWARE =====
+app.use(cors({
+  origin: [
+    "https://www.agenciamuum.com.br",
+    "https://agenciamuum.com.br",
+    "http://localhost:5173"
+  ],
+  methods: ["GET", "POST", "OPTIONS"],
+  allowedHeaders: ["Content-Type"],
+}));
+
+app.use(bodyParser.json({ limit: "2mb" }));
+
+// ===== HEALTH CHECK =====
+app.get("/", (_req, res) => {
+  res.json({ status: "ok", message: "Servidor ativo e funcionando 🚀" });
+});
+
+// ===== ROTA PRINCIPAL =====
+app.post("/api/generate", async (req, res) => {
   try {
-    const { prompt } = req.body || {};
-    if (!prompt) return res.status(400).json({ error: 'missing prompt' });
-
-    const url = `${GEMINI_ENDPOINT}?key=${encodeURIComponent(GEMINI_API_KEY)}`;
-    const payload = {
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-    };
-
-    const r = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-
-    if (!r.ok) {
-      const t = await r.text();
-      return res.status(r.status).json({ error: 'gemini error', detail: t });
+    if (!GEMINI_KEY) {
+      return res.status(500).json({ error: "GEMINI_API_KEY ausente no servidor" });
     }
 
-    const data = await r.json();
-    return res.json(data);
-  } catch (e) {
-    return res
-      .status(500)
-      .json({ error: 'internal error', detail: String(e?.message || e) });
+    const { prompt } = req.body || {};
+    if (!prompt || typeof prompt !== "string" || !prompt.trim()) {
+      return res.status(400).json({ error: "prompt inválido ou vazio" });
+    }
+
+    const genAI = new GoogleGenerativeAI(GEMINI_KEY);
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+    const result = await model.generateContent(prompt);
+    const text = result?.response?.text?.() || "(Sem resposta gerada)";
+
+    res.json({ ok: true, text });
+  } catch (err) {
+    console.error("❌ Erro ao gerar conteúdo:", err);
+    res.status(500).json({
+      error: "falha_gemini",
+      detail: err?.message || "Erro desconhecido",
+    });
   }
 });
 
-const port = process.env.PORT || 8080;
-app.listen(port, () => console.log(`✅ API listening on :${port}`));
+// ===== INICIALIZA SERVIDOR =====
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`✅ Servidor rodando em http://0.0.0.0:${PORT}`);
+});
