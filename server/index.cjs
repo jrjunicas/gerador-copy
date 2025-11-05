@@ -3,7 +3,7 @@
  * Backend do Gerador de Conteúdo IA (CommonJS)
  * - Express + CORS
  * - Gemini via @google/generative-ai
- * - Porta definida por process.env.PORT (Render) ou 10000
+ * - Porta: process.env.PORT (Render) ou 10000
  */
 
 const express = require("express");
@@ -14,15 +14,15 @@ const { GoogleGenerativeAI } = require("@google/generative-ai");
 const app = express();
 const port = process.env.PORT || 10000;
 
-// CORS (ajuste as origens do seu domínio)
+// Defina as origens que vão consumir sua API:
 app.use(
   cors({
     origin: [
       "https://agenciamuum.com.br",
       "https://www.agenciamuum.com.br",
       "http://localhost:5173",
-      "http://localhost:3000",
-    ],
+      "http://localhost:3000"
+    ]
   })
 );
 
@@ -31,16 +31,16 @@ app.use(bodyParser.json());
 // ===== Gemini =====
 const apiKey = (process.env.GEMINI_API_KEY || "").trim();
 if (!apiKey) {
-  console.error("❌ ERRO: variável GEMINI_API_KEY não encontrada!");
+  console.error("❌ ERRO: variável GEMINI_API_KEY não encontrada no Render!");
 }
 const genAI = new GoogleGenerativeAI(apiKey);
 
 // Healthcheck
-app.get("/", (req, res) => {
+app.get("/", (_req, res) => {
   res.send("✅ API do Gerador de Conteúdo IA rodando (CommonJS)");
 });
 
-// Rota principal de geração
+// Endpoint de geração
 app.post("/api/generate", async (req, res) => {
   try {
     const { prompt } = req.body;
@@ -49,22 +49,16 @@ app.post("/api/generate", async (req, res) => {
     }
 
     const model = genAI.getGenerativeModel({
-      model: "gemini-1.5-flash-latest",
+      model: "gemini-1.5-flash-latest"
     });
 
     const result = await model.generateContent({
       contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature: 0.7,
-        topP: 0.9,
-        topK: 40,
-      },
+      generationConfig: { temperature: 0.7, topP: 0.9, topK: 40 }
     });
 
     const text = result?.response?.text?.();
-    if (!text) {
-      throw new Error("Resposta vazia do Gemini.");
-    }
+    if (!text) throw new Error("Resposta vazia do Gemini.");
 
     res.json({ text });
   } catch (err) {
