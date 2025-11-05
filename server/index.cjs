@@ -1,6 +1,6 @@
 /**
- * Servidor Node simples que recebe o prompt do front-end
- * e chama a API do Gemini 1.5-flash-latest.
+ * Servidor Node para o Gerador de Conteúdo IA
+ * Compatível com o modelo Gemini 1.5-flash-latest
  */
 
 import express from "express";
@@ -11,37 +11,42 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 const app = express();
 const port = process.env.PORT || 10000;
 
-// Permite requisições do seu domínio
+// ======= CORS (permitindo origens do seu site) =======
 app.use(cors({
   origin: [
+    "https://agenciamuum.com.br",
     "https://www.agenciamuum.com.br",
     "http://localhost:5173",
     "http://localhost:3000"
-  ]
+  ],
 }));
+
 app.use(bodyParser.json());
 
-// Inicializa o cliente Gemini com a chave do Render
-const apiKey = process.env.GEMINI_API_KEY;
-if (!apiKey) {
-  console.error("❌ Nenhuma GEMINI_API_KEY encontrada nas variáveis de ambiente!");
-}
-const genAI = new GoogleGenerativeAI(apiKey);
+// ======= Inicialização segura da API =======
+const apiKey = process.env.GEMINI_API_KEY?.trim();
 
-// Rota de teste
+if (!apiKey) {
+  console.error("❌ ERRO: variável GEMINI_API_KEY não encontrada!");
+}
+
+const genAI = new GoogleGenerativeAI({ apiKey });
+
+// ======= Rota de teste =======
 app.get("/", (req, res) => {
   res.send("✅ API do Gerador de Conteúdo IA rodando com Gemini");
 });
 
-// Endpoint principal de geração
+// ======= Rota principal de geração =======
 app.post("/api/generate", async (req, res) => {
   try {
     const { prompt } = req.body;
+
     if (!prompt) {
-      return res.status(400).json({ error: "Missing prompt" });
+      return res.status(400).json({ error: "Prompt ausente na requisição." });
     }
 
-    console.log("🧠 Gerando conteúdo com Gemini...");
+    console.log("🧠 Solicitando geração ao modelo Gemini...");
 
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
 
@@ -50,22 +55,27 @@ app.post("/api/generate", async (req, res) => {
       generationConfig: {
         temperature: 0.7,
         topP: 0.9,
-        topK: 40
-      }
+        topK: 40,
+      },
     });
 
     const text = result.response.text();
+
+    if (!text) {
+      throw new Error("A resposta veio vazia da API Gemini.");
+    }
+
     res.json({ text });
   } catch (err) {
-    console.error("❌ Erro na geração:", err);
+    console.error("❌ Erro durante a geração:", err);
     res.status(500).json({
       error: "falha_gemini",
-      detail: err.message || String(err)
+      detail: err.message || String(err),
     });
   }
 });
 
-// Inicia o servidor
+// ======= Inicialização do servidor =======
 app.listen(port, () => {
-  console.log(`🚀 Servidor rodando na porta ${port}`);
+  console.log(`🚀 Servidor ativo e escutando na porta ${port}`);
 });
