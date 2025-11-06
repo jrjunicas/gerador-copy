@@ -586,15 +586,3 @@ const ManagePromptsModal: React.FC<ManagePromptsModalProps> = ({ prompts, onClos
 
 
 export default ContentForm;
-
-// ---- Production-safe Gemini proxy call ----
-export async function generateViaApi(prompt) {
-  const resp = await fetch('/api/generate', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ prompt })
-  });
-  if (!resp.ok) throw new Error('Falha na geração');
-  return await resp.json();
-}
-
