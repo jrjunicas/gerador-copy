@@ -1,183 +1,199 @@
-import React, { useEffect, useMemo, useState } from "react";
-import ContentForm from "./components/ContentForm";
-import GeneratedContentDisplay from "./components/GeneratedContentDisplay";
+import { useEffect, useState } from "react";
+import "./App.css";
 
 import {
-  Client,
-  ContentRequest,
-  ContentFormatDefinition,
-  PromptTemplate,
-  GeneratedContent,
-} from "./types";
-
-import {
-  generateBatchSocialMediaContent,
-} from "./services/geminiService";
-
-import {
+  // CLIENTES (API PHP)
   listClients,
   createClient,
   updateClient,
   deleteClient,
+
+  // FORMATS (LocalStorage)
   listFormats,
   createFormat,
   updateFormat,
   deleteFormat,
+
+  // PROMPTS (LocalStorage)
   listPrompts,
   createPrompt,
   updatePrompt,
   deletePrompt,
 } from "./services/db";
 
-const App: React.FC = () => {
-  // estados principais
-  const [clients, setClients] = useState<Client[]>([]);
-  const [formats, setFormats] = useState<ContentFormatDefinition[]>([]);
-  const [prompts, setPrompts] = useState<PromptTemplate[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+function App() {
+  const [clients, setClients] = useState<any[]>([]);
+  const [formats, setFormats] = useState<any[]>([]);
+  const [prompts, setPrompts] = useState<any[]>([]);
+  const [selectedClient, setSelectedClient] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  // resultados gerados (um para cada item da fila)
-  const [generated, setGenerated] = useState<
-    (GeneratedContent | { error: string })[]
-  >([]);
+  // ================================
+  // CLIENTES
+  // ================================
+  async function loadClients() {
+    try {
+      const data = await listClients();
+      setClients(data);
+    } catch (err) {
+      console.error("Erro ao carregar clientes:", err);
+    }
+  }
 
-  // ====== carga inicial (clientes / formatos / prompts) ======
+  async function handleCreateClient() {
+    const name = prompt("Nome do cliente:");
+    if (!name) return;
+    await createClient({ name });
+    await loadClients();
+  }
+
+  async function handleUpdateClient(id: number) {
+    const client = clients.find((c) => c.id === id);
+    const newName = prompt("Novo nome do cliente:", client?.name || "");
+    if (!newName) return;
+    await updateClient({ id, name: newName });
+    await loadClients();
+  }
+
+  async function handleDeleteClient(id: number) {
+    if (!confirm("Excluir este cliente?")) return;
+    await deleteClient(id);
+    await loadClients();
+  }
+
+  // ================================
+  // FORMATS (LocalStorage)
+  // ================================
+  async function loadFormats() {
+    const data = await listFormats();
+    setFormats(data);
+  }
+
+  async function handleCreateFormat() {
+    const name = prompt("Nome do formato:");
+    const description = prompt("Descrição do formato:");
+    if (!name || !description) return;
+    await createFormat({ name, description });
+    await loadFormats();
+  }
+
+  async function handleUpdateFormat(id: string) {
+    const format = formats.find((f) => f.id === id);
+    const newName = prompt("Novo nome:", format?.name);
+    const newDesc = prompt("Nova descrição:", format?.description);
+    if (!newName || !newDesc) return;
+    await updateFormat({ ...format, name: newName, description: newDesc });
+    await loadFormats();
+  }
+
+  async function handleDeleteFormat(id: string) {
+    if (!confirm("Excluir este formato?")) return;
+    await deleteFormat(id);
+    await loadFormats();
+  }
+
+  // ================================
+  // PROMPTS (LocalStorage)
+  // ================================
+  async function loadPrompts() {
+    const data = await listPrompts();
+    setPrompts(data);
+  }
+
+  async function handleCreatePrompt() {
+    const name = prompt("Nome do prompt:");
+    const command = prompt("Comando:");
+    if (!name) return;
+    await createPrompt({ name, command: command || "" });
+    await loadPrompts();
+  }
+
+  async function handleUpdatePrompt(id: string) {
+    const promptObj = prompts.find((p) => p.id === id);
+    const newName = prompt("Novo nome:", promptObj?.name);
+    const newCmd = prompt("Novo comando:", promptObj?.command);
+    if (!newName) return;
+    await updatePrompt({ ...promptObj, name: newName, command: newCmd || "" });
+    await loadPrompts();
+  }
+
+  async function handleDeletePrompt(id: string) {
+    if (!confirm("Excluir este prompt?")) return;
+    await deletePrompt(id);
+    await loadPrompts();
+  }
+
+  // ================================
+  // INICIALIZAÇÃO
+  // ================================
   useEffect(() => {
-    (async () => {
-      try {
-        const [cRes, fRes, pRes] = await Promise.all([
-          listClients(),
-          listFormats(),
-          listPrompts(),
-        ]);
-        if (Array.isArray(cRes?.clients)) setClients(cRes.clients);
-        if (Array.isArray(fRes?.formats)) setFormats(fRes.formats);
-        if (Array.isArray(pRes?.prompts)) setPrompts(pRes.prompts);
-      } catch (e) {
-        console.warn("Falha ao carregar dados iniciais:", e);
-      }
-    })();
+    async function init() {
+      setLoading(true);
+      await Promise.all([loadClients(), loadFormats(), loadPrompts()]);
+      setLoading(false);
+    }
+    init();
   }, []);
 
-  // ====== handlers CRUD – CLIENTES ======
-  const handleAddClient = async (client: Omit<Client, "id">) => {
-    const res = await createClient({
-      name: client.name,
-      tone_of_voice: client.toneOfVoice,
-      audience: client.targetAudience,
-      market: client.market,
-    });
-    // re-carrega
-    const cRes = await listClients();
-    if (Array.isArray(cRes?.clients)) setClients(cRes.clients);
-    return res;
-  };
-
-  const handleUpdateClient = async (client: Client) => {
-    await updateClient({
-      id: Number(client.id),
-      name: client.name,
-      tone_of_voice: client.toneOfVoice,
-      audience: client.targetAudience,
-      market: client.market,
-    });
-    const cRes = await listClients();
-    if (Array.isArray(cRes?.clients)) setClients(cRes.clients);
-  };
-
-  const handleDeleteClient = async (clientId: string) => {
-    await deleteClient(Number(clientId));
-    const cRes = await listClients();
-    if (Array.isArray(cRes?.clients)) setClients(cRes.clients);
-  };
-
-  // ====== handlers CRUD – FORMATOS ======
-  const handleAddFormat = async (format: Omit<ContentFormatDefinition, "id" | "isDefault">) => {
-    await createFormat({ name: format.name, description: format.description });
-    const res = await listFormats();
-    if (Array.isArray(res?.formats)) setFormats(res.formats);
-  };
-
-  const handleUpdateFormat = async (format: ContentFormatDefinition) => {
-    await updateFormat({ id: Number(format.id), name: format.name, description: format.description });
-    const res = await listFormats();
-    if (Array.isArray(res?.formats)) setFormats(res.formats);
-  };
-
-  const handleDeleteFormat = async (formatId: string) => {
-    await deleteFormat(Number(formatId));
-    const res = await listFormats();
-    if (Array.isArray(res?.formats)) setFormats(res.formats);
-  };
-
-  // ====== handlers CRUD – PROMPTS ======
-  const handleAddPrompt = async (prompt: Omit<PromptTemplate, "id">) => {
-    await createPrompt({ name: prompt.name, command: prompt.command });
-    const res = await listPrompts();
-    if (Array.isArray(res?.prompts)) setPrompts(res.prompts);
-  };
-
-  const handleUpdatePrompt = async (prompt: PromptTemplate) => {
-    await updatePrompt({ id: Number(prompt.id), name: prompt.name, command: prompt.command });
-    const res = await listPrompts();
-    if (Array.isArray(res?.prompts)) setPrompts(res.prompts);
-  };
-
-  const handleDeletePrompt = async (promptId: string) => {
-    await deletePrompt(Number(promptId));
-    const res = await listPrompts();
-    if (Array.isArray(res?.prompts)) setPrompts(res.prompts);
-  };
-
-  // ====== Gerar Conteúdos (onde disparamos a IA via backend) ======
-  const handleSubmitBatch = async (requests: ContentRequest[], clientId: string) => {
-    const client = clients.find((c) => c.id === clientId);
-    if (!client) {
-      alert("Cliente inválido.");
-      return;
-    }
-
-    setIsLoading(true);
-    setGenerated([]);
-    try {
-      const out = await generateBatchSocialMediaContent(requests, client, formats);
-      setGenerated(out);
-    } catch (e) {
-      console.error("Falha geral na geração:", e);
-      setGenerated([{ error: "Falha geral na geração" }]);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  // ================================
+  // RENDER
+  // ================================
+  if (loading) return <div className="p-8">Carregando dados...</div>;
 
   return (
-    <div className="container mx-auto max-w-6xl p-4">
-      <h1 className="text-2xl font-bold text-white mb-6">
-        Gerador de Conteúdo IA
-      </h1>
+    <div className="app-container">
+      <h1>Gerador de Conteúdo IA</h1>
 
-      <div className="grid md:grid-cols-2 gap-6">
-        <ContentForm
-          clients={clients}
-          formats={formats}
-          prompts={prompts}
-          onAddClient={handleAddClient}
-          onUpdateClient={handleUpdateClient}
-          onDeleteClient={handleDeleteClient}
-          onAddFormat={handleAddFormat}
-          onUpdateFormat={handleUpdateFormat}
-          onDeleteFormat={handleDeleteFormat}
-          onAddPrompt={handleAddPrompt}
-          onUpdatePrompt={handleUpdatePrompt}
-          onDeletePrompt={handleDeletePrompt}
-          onSubmitBatch={handleSubmitBatch}
-          isLoading={isLoading}
-        />
+      {/* CLIENTES */}
+      <section>
+        <h2>Clientes</h2>
+        <button onClick={handleCreateClient}>+ Novo Cliente</button>
+        <ul>
+          {clients.map((c) => (
+            <li key={c.id}>
+              {c.name}{" "}
+              <button onClick={() => handleUpdateClient(c.id)}>✏️</button>
+              <button onClick={() => handleDeleteClient(c.id)}>🗑️</button>
+            </li>
+          ))}
+        </ul>
+      </section>
 
-        <GeneratedContentDisplay results={generated} />
-      </div>
+      {/* FORMATS */}
+      <section>
+        <h2>Formatos</h2>
+        <button onClick={handleCreateFormat}>+ Novo Formato</button>
+        <ul>
+          {formats.map((f) => (
+            <li key={f.id}>
+              <strong>{f.name}</strong> — {f.description}{" "}
+              {!f.isDefault && (
+                <>
+                  <button onClick={() => handleUpdateFormat(f.id)}>✏️</button>
+                  <button onClick={() => handleDeleteFormat(f.id)}>🗑️</button>
+                </>
+              )}
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      {/* PROMPTS */}
+      <section>
+        <h2>Prompts</h2>
+        <button onClick={handleCreatePrompt}>+ Novo Prompt</button>
+        <ul>
+          {prompts.map((p) => (
+            <li key={p.id}>
+              <strong>{p.name}</strong> — {p.command || "(vazio)"}{" "}
+              <button onClick={() => handleUpdatePrompt(p.id)}>✏️</button>
+              <button onClick={() => handleDeletePrompt(p.id)}>🗑️</button>
+            </li>
+          ))}
+        </ul>
+      </section>
     </div>
   );
-};
+}
 
 export default App;
