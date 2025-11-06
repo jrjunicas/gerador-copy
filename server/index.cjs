@@ -14,33 +14,45 @@ const { GoogleGenerativeAI } = require("@google/generative-ai");
 const app = express();
 const port = process.env.PORT || 10000;
 
-// Defina as origens que vão consumir sua API:
+/** CORS – libere somente os domínios que vão consumir sua API */
+const ALLOWED_ORIGINS = [
+  "https://www.agenciamuum.com.br",
+  "https://agenciamuum.com.br",
+  "http://localhost:5173",
+  "http://localhost:3000",
+];
+
 app.use(
   cors({
-    origin: [
-      "https://agenciamuum.com.br",
-      "https://www.agenciamuum.com.br",
-      "http://localhost:5173",
-      "http://localhost:3000"
-    ]
+    origin(origin, cb) {
+      // permite chamadas do browser com origin na lista e também chamadas sem origin (ex.: curl, healthcheck)
+      if (!origin || ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
+      return cb(new Error("Not allowed by CORS"));
+    },
+    methods: ["GET", "POST", "OPTIONS"],
+    allowedHeaders: ["Content-Type"],
+    credentials: false,
   })
 );
 
-app.use(bodyParser.json());
+// trata preflight de qualquer rota
+app.options("*", cors());
 
-// ===== Gemini =====
+app.use(bodyParser.json({ limit: "1mb" }));
+
+/** Gemini */
 const apiKey = (process.env.GEMINI_API_KEY || "").trim();
 if (!apiKey) {
   console.error("❌ ERRO: variável GEMINI_API_KEY não encontrada no Render!");
 }
 const genAI = new GoogleGenerativeAI(apiKey);
 
-// Healthcheck
+/** Healthcheck */
 app.get("/", (_req, res) => {
   res.send("✅ API do Gerador de Conteúdo IA rodando (CommonJS)");
 });
 
-// Endpoint de geração
+/** Endpoint de geração */
 app.post("/api/generate", async (req, res) => {
   try {
     const { prompt } = req.body;
@@ -48,13 +60,14 @@ app.post("/api/generate", async (req, res) => {
       return res.status(400).json({ error: "Prompt ausente ou inválido." });
     }
 
+    // use um modelo estável suportado pela API
     const model = genAI.getGenerativeModel({
-      model: "gemini-1.5-flash-latest"
+      model: "gemini-1.5-flash",
     });
 
     const result = await model.generateContent({
       contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.7, topP: 0.9, topK: 40 }
+      generationConfig: { temperature: 0.7, topP: 0.9, topK: 40 },
     });
 
     const text = result?.response?.text?.();
@@ -69,7 +82,7 @@ app.post("/api/generate", async (req, res) => {
   }
 });
 
-// Start
+/** Start */
 app.listen(port, () => {
   console.log(`🚀 Servidor ativo e escutando na porta ${port}`);
 });
