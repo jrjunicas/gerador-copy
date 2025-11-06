@@ -28,9 +28,9 @@ function App() {
   const [selectedClient, setSelectedClient] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // ================================
+  // ===============================
   // CLIENTES
-  // ================================
+  // ===============================
   async function loadClients() {
     try {
       const data = await listClients();
