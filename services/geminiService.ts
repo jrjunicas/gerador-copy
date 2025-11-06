@@ -1,80 +1,60 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
-import { Client, ContentRequest, GeneratedContent, NetworkContent, ContentFormatDefinition } from "../types";
+// src/services/geminiService.ts
+// ------------------------------------------------------
+// IMPORTANTE:
+// - Este arquivo NÃO usa mais @google/generative-ai no front.
+// - Toda geração é feita via seu backend no Render (proxy seguro).
+// - Assim, nenhuma API key fica exposta no navegador.
+// ------------------------------------------------------
 
-if (!process.env.API_KEY) {
-  console.warn("⚠️ API_KEY environment variable not set. API calls will fail if not provided.");
-}
+import {
+  Client,
+  ContentRequest,
+  GeneratedContent,
+  NetworkContent,
+  ContentFormatDefinition,
+} from "../types";
 
-const ai = new GoogleGenerativeAI({ apiKey: process.env.API_KEY as string });
+// 👉 seu backend no Render:
+const API_BASE = "https://gerador-copy.onrender.com";
 
-// ---------- Função auxiliar: conversão de arquivo ----------
-function fileToGenerativePart(file: File): Promise<{ inlineData: { data: string; mimeType: string } }> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      if (event.target && typeof event.target.result === "string") {
-        const base64Data = event.target.result.split(",")[1];
-        resolve({
-          inlineData: {
-            data: base64Data,
-            mimeType: file.type,
-          },
-        });
-      } else {
-        reject(new Error("Falha ao ler o arquivo."));
-      }
-    };
-    reader.onerror = (error) => reject(error);
-    reader.readAsDataURL(file);
+// ---------- Proxy seguro (único ponto que fala com a API do Render) ----------
+export async function generateViaApi(prompt: string): Promise<{ text: string }> {
+  const resp = await fetch(`${API_BASE}/api/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt }),
   });
+  if (!resp.ok) {
+    const msg = await resp.text().catch(() => "");
+    throw new Error(`Falha na geração (${resp.status}) ${msg}`);
+  }
+  return resp.json();
 }
 
-// ---------- Extrair tema de imagem ou texto ----------
-export const extractThemeFromFile = async (file: File): Promise<string> => {
-  try {
-    let contents;
-
-    if (file.type.startsWith("image/")) {
-      const imagePart = await fileToGenerativePart(file);
-      contents = {
-        parts: [
-          imagePart,
-          {
-            text: "Analise esta imagem e descreva o tema principal em uma frase curta e impactante, ideal para um post de rede social.",
-          },
-        ],
-      };
-    } else if (file.type === "text/plain") {
-      const text = await file.text();
-      contents = `Resuma o seguinte texto em um tema central para um post de rede social. O resultado deve ser uma frase curta e cativante:\n\n${text}`;
-    } else {
-      throw new Error("Tipo de arquivo não suportado. Use imagens (JPEG, PNG) ou texto (.txt).");
-    }
-
-    const response = await ai.getGenerativeModel({ model: "gemini-1.5-flash-latest" }).generateContent({
-      contents,
-      generationConfig: { temperature: 0.5 },
-    });
-
-    const responseText = response.response.text();
-    if (!responseText) throw new Error("A IA não conseguiu extrair um tema do arquivo.");
-
-    return responseText.trim();
-  } catch (error) {
-    console.error("Erro ao extrair tema do arquivo:", error);
-    throw new Error("Falha ao analisar o arquivo. Verifique o console para mais detalhes.");
-  }
+// ---------- (Opcional) Extrair tema de arquivo ----------
+// Para não expor a API key no front, desabilitamos aqui.
+// Se quiser usar extração por IA, crie um endpoint no backend
+// (ex.: POST /api/extract-theme) e mova a lógica para lá.
+export const extractThemeFromFile = async (_file: File): Promise<string> => {
+  throw new Error(
+    "Extração de tema por arquivo está desabilitada no front. Implemente um endpoint no backend para habilitar."
+  );
 };
 
 // ---------- Construir prompt ----------
-function buildPrompt(request: Omit<ContentRequest, "id">, client: Client, formats: ContentFormatDefinition[]): string {
+function buildPrompt(
+  request: Omit<ContentRequest, "id">,
+  client: Client,
+  formats: ContentFormatDefinition[]
+): string {
   const allNetworks = request.networks.includes("Outro")
     ? [...request.networks.filter((n) => n !== "Outro"), request.customNetwork].filter(Boolean)
     : request.networks;
 
   const selectedFormat = formats.find((f) => f.name === request.format);
   const formatInstructions =
-    selectedFormat?.description || "Gere um conteúdo criativo e de alta qualidade para o formato especificado.";
+    selectedFormat?.description ||
+    "Gere um conteúdo criativo e de alta qualidade para o formato especificado.";
 
   return `
 ASSUMA O PAPEL de um estrategista criativo de conteúdo, especialista em crescimento orgânico e viralização com mais de 10 anos de experiência.
@@ -131,7 +111,10 @@ ${allNetworks
 }
 
 // ---------- Parsear resposta ----------
-function parseResponse(responseText: string, request: Omit<ContentRequest, "id">): GeneratedContent {
+function parseResponse(
+  responseText: string,
+  request: Omit<ContentRequest, "id">
+): GeneratedContent {
   const allNetworks = request.networks.includes("Outro")
     ? [...request.networks.filter((n) => n !== "Outro"), request.customNetwork].filter(Boolean)
     : request.networks;
@@ -140,9 +123,11 @@ function parseResponse(responseText: string, request: Omit<ContentRequest, "id">
     responseText.split("[START_CREATIVE_SUGGESTION]")[1]?.split("[END_CREATIVE_SUGGESTION]")[0]?.trim() ||
     "Nenhuma sugestão criativa gerada.";
 
-  const coverPhrasesText = responseText.split("[START_COVER_PHRASES]")[1]?.split("[END_COVER_PHRASES]")[0]?.trim();
+  const coverPhrasesText =
+    responseText.split("[START_COVER_PHRASES]")[1]?.split("[END_COVER_PHRASES]")[0]?.trim();
+
   const coverPhrases = coverPhrasesText
-    ? coverPhrases
+    ? coverPhrasesText
         .split("\n")
         .map((p) => p.replace(/^\d+\.\s*/, "").trim())
         .filter((p) => p)
@@ -158,41 +143,32 @@ function parseResponse(responseText: string, request: Omit<ContentRequest, "id">
       const hashtags = block.split("**Hashtags:**")[1]?.trim() || "";
       networkContent[network] = { caption, hashtags };
     } else {
-      networkContent[network] = { caption: `Conteúdo para ${network} não foi gerado.`, hashtags: "" };
+      networkContent[network] = {
+        caption: `Conteúdo para ${network} não foi gerado.`,
+        hashtags: "",
+      };
     }
   });
 
   return { creativeSuggestion, coverPhrases, networkContent };
 }
 
-// ---------- Geração principal ----------
+// ---------- Geração principal (via backend) ----------
 export const generateSocialMediaContent = async (
   request: Omit<ContentRequest, "id">,
   client: Client,
   formats: ContentFormatDefinition[]
 ): Promise<GeneratedContent> => {
-  try {
-    const prompt = buildPrompt(request, client, formats);
-    const model = ai.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
+  const prompt = buildPrompt(request, client, formats);
 
-    const response = await model.generateContent({
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature: 0.7,
-        topK: 40,
-        topP: 0.9,
-      },
-      tools: [{ googleSearch: {} }],
-    });
+  // Chama seu backend, que por sua vez chama a Gemini
+  const { text } = await generateViaApi(prompt);
 
-    const responseText = response.response.text();
-    if (!responseText) throw new Error("A API não retornou conteúdo. Tente novamente.");
-
-    return parseResponse(responseText, request);
-  } catch (error) {
-    console.error("Erro ao chamar a API Gemini:", error);
-    throw new Error("Falha na comunicação com a IA. Verifique sua conexão e a chave de API.");
+  if (!text || typeof text !== "string") {
+    throw new Error("A API não retornou conteúdo. Tente novamente.");
   }
+
+  return parseResponse(text, request);
 };
 
 // ---------- Geração em lote ----------
@@ -204,19 +180,11 @@ export const generateBatchSocialMediaContent = async (
   const promises = requests.map((req) => {
     const { id, ...data } = req;
     return generateSocialMediaContent(data, client, formats).catch((err) => ({
-      error: err instanceof Error ? err.message : `Falha ao gerar conteúdo para o tema "${req.theme}".`,
+      error:
+        err instanceof Error
+          ? err.message
+          : `Falha ao gerar conteúdo para o tema "${req.theme}".`,
     }));
   });
   return Promise.all(promises);
 };
-
-// ---------- Proxy seguro ----------
-export async function generateViaApi(prompt: string) {
-  const resp = await fetch("/api/generate", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ prompt }),
-  });
-  if (!resp.ok) throw new Error("Falha na geração");
-  return await resp.json();
-}
