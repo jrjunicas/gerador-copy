@@ -8,6 +8,6 @@ export async function generateViaApi(prompt: string) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ prompt }),
   });
-  if (!resp.ok) throw new Error("Falha na geração");
+  if (!resp.ok) throw new Error(`Falha na geração (${resp.status})`);
   return resp.json();
 }
