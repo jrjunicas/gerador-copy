@@ -1,7 +1,17 @@
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import path from "path";
 
 export default defineConfig({
   plugins: [react()],
-  base: '/gerador-copy/', // 👈 importante pra Hostinger
-})
+  resolve: {
+    alias: {
+      "@": path.resolve(__dirname, "./src"),
+    },
+    extensions: [".js", ".ts", ".jsx", ".tsx", ".json", ".css"],
+  },
+  build: {
+    outDir: "dist",
+    sourcemap: false,
+  },
+});
