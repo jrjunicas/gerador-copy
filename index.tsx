@@ -1,16 +1,13 @@
-
 import React from 'react';
-import ReactDOM from 'react-dom/client';
+import { createRoot } from 'react-dom/client';
 import App from './App';
+import './index.css'; // o Vite empacota e injeta no HTML final
 
-const rootElement = document.getElementById('root');
-if (!rootElement) {
-  throw new Error("Could not find root element to mount to");
-}
+const mount = document.getElementById('root') ?? (() => {
+  const el = document.createElement('div');
+  el.id = 'root';
+  document.body.appendChild(el);
+  return el;
+})();
 
-const root = ReactDOM.createRoot(rootElement);
-root.render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
+createRoot(mount).render(<App />);
