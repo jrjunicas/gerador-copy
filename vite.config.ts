@@ -3,5 +3,5 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
-  base: '/gerador-copy/', // <- sua subpasta na Hostinger
+  base: '/gerador-copy/', // obrigatório se o site está em subpasta
 });
