@@ -7,11 +7,10 @@
       content="width=device-width, initial-scale=1, maximum-scale=1"
     />
     <title>Gerador de Conteúdo IA</title>
-    <!-- NÃO coloque <link rel="stylesheet" href="/index.css"> aqui -->
   </head>
   <body>
     <div id="root"></div>
-    <!-- Em dev o Vite carrega /src/index.tsx; no build ele troca por /gerador-copy/assets/xxx.js -->
-    <script type="module" src="/src/index.tsx"></script>
+    <!-- 👇 O correto é caminho relativo, SEM barra inicial -->
+    <script type="module" src="./src/index.tsx"></script>
   </body>
 </html>
